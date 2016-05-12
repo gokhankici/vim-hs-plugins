@@ -1,0 +1,10 @@
+resolver: lts-5.16
+
+packages:
+- location: '.'
+- location:
+    git:    https://github.com/neovimhaskell/nvim-hs
+    commit: ef776a9b2d99042bd35495ca1d17f1a35507a1dc
+extra-deps: []
+flags: {}
+extra-package-dbs: []
