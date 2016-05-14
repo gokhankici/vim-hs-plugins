@@ -5,6 +5,7 @@ packages:
 - location:
     git:    https://github.com/neovimhaskell/nvim-hs
     commit: ef776a9b2d99042bd35495ca1d17f1a35507a1dc
-extra-deps: []
+extra-deps:
+- dates-0.2.2.1
 flags: {}
 extra-package-dbs: []
