@@ -11,8 +11,10 @@ import Control.Monad
 import Data.Dates
 import Data.Either
 import Data.Fixed
+import Data.Maybe
 import Data.Time
 import qualified Text.Parsec as P
+import Text.Printf
 
 inspectBuffer :: Neovim r st ()
 inspectBuffer = do
@@ -28,7 +30,7 @@ inspectBuffer = do
 -- ######################################################################
 
 try :: (Show a) => Either a b -> Neovim r st b
-try e = either (err . text . show) return e
+try = either (err . text . show) return
 
 objToInt :: Object -> Neovim r st Int
 objToInt o =
@@ -44,35 +46,33 @@ input :: String       -- ^ Message to display
       -> Maybe String -- ^ Input fiiled in
       -> Maybe String -- ^ Completion mode
       -> Neovim r st (Either Object Object)
-input message mPrefilled mCompletion = 
+input message mPrefilled mCompletion =
   do r1_o <- vim_call_function "inputsave" [] >>= try
      r1   <- objToInt r1_o
      when (r1 /= 0) (err $ text "inputsave return OOM")
 
-     res <- vim_call_function "input" $
-              (message <> " ")
-              +: maybe "" id mPrefilled
-              +: maybe [] (+: []) mCompletion
+     let args = catMaybes (map (toObject <$>) [Just message, mPrefilled, mCompletion])
+     res <- vim_call_function "input" args
 
      r2_o <- vim_call_function "inputrestore" [] >>= try
      r2   <- objToInt r2_o
      when (r2 /= 0) (err $ text "nothing to restore")
 
-     return (r1 `seq` r2 `seq` res)
+     return res
 
-askForDate :: Neovim' DateTime
+askForDate :: Neovim r st DateTime
 askForDate =
   do currDate <- liftIO $ getCurrentDateTime
-     obj      <- input "Enter date:\n"    -- msg
+     obj      <- input "Enter date: "    -- msg
                        (Just "today")    -- input filled in
                        Nothing >>= try   -- completion mode
      relDate <- try $ fromObject obj
 
      try $ parseDate currDate relDate
 
-askForFormat :: Neovim' String
+askForFormat :: Neovim r st String
 askForFormat =
-  do obj <- input "Enter format:\n"         -- msg
+  do obj <- input "Enter format: "         -- msg
                   (Just "<%Y-%m-%d %a>") -- input filled in
                   Nothing >>= try        -- completion mode
      try $ fromObject obj
@@ -80,9 +80,9 @@ askForFormat =
 defInterval :: DateInterval
 defInterval = Days 0
 
-parseInputInterval :: String -> Neovim' DateInterval
-parseInputInterval s = 
-  do (c,i) <- try $ P.runParser myIntervalParser () "" s 
+parseInputInterval :: String -> Neovim r st DateInterval
+parseInputInterval s =
+  do (c,i) <- try $ P.runParser myIntervalParser () "" s
      return $ if c == '-'
                  then negateInterval i
                  else i
@@ -91,9 +91,9 @@ parseInputInterval s =
                                  <*> (P.spaces *> pDateInterval)
 
 
-askForInterval :: Neovim' DateInterval
+askForInterval :: Neovim r st DateInterval
 askForInterval =
-  do obj <- input "Interval [(+,-) n (day,week,month,year)[s]:\n" -- msg
+  do obj <- input "Interval [(+,-) n (day,week,month,year)[s]: " -- msg
                   Nothing                                         -- input filled in
                   Nothing >>= try                                 -- completion mode
      s  <- try $ fromObject obj
@@ -101,7 +101,7 @@ askForInterval =
         then return defInterval
         else parseInputInterval s
 
-fuzzyDate :: Neovim' String
+fuzzyDate :: Neovim r st ()
 fuzzyDate =
   do d'       <- askForDate
      format   <- askForFormat
@@ -111,6 +111,7 @@ fuzzyDate =
          psec     = MkFixed ((toInteger $ second d) * (10^12))
          Just tod = makeTimeOfDayValid (hour d) (minute d) psec
          locTime  = LocalTime {localDay = gregDay, localTimeOfDay = tod}
-     return $ formatTime defaultTimeLocale format locTime
-
+         str      = formatTime defaultTimeLocale format locTime
+     vim_command (printf "normal i%s" str) >>= try
+     return ()
 
